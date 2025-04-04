@@ -1,0 +1,9 @@
+scipy
+pandas
+matplotlib
+scikit-learn
+tensorflow==2.11.0
+hls4ml[profiling] 
+sympy
+numpy==1.26.0
+pydot
