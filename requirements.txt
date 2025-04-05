@@ -7,3 +7,7 @@ hls4ml[profiling]
 sympy
 numpy==1.26.0
 pydot
+graphviz
+tensorflow_datasets
+tensorflow_model_optimization
+qkeras
