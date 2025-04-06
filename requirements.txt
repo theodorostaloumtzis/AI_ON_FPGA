@@ -11,3 +11,4 @@ graphviz
 tensorflow_datasets
 tensorflow_model_optimization
 qkeras
+netron
