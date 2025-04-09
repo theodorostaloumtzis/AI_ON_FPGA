@@ -98,7 +98,7 @@ def build_model(input_shape=(28, 28, 1), n_classes=10):
     Build and compile a baseline CNN model for MNIST.
     Returns the compiled keras Model.
     """
-    filters_per_conv_layer = [16, 8]
+    filters_per_conv_layer = [16, 8, 8]
     neurons_per_dense_layer = [24]
 
     x_in = Input(input_shape)
@@ -216,7 +216,7 @@ def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5
     }
 
     limit = {
-        "conv": [8, 16],
+        "conv": [16, 8, 8],
         "dense": [8, 16],
         "act": [16]
     }
@@ -336,6 +336,12 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", pa
     hls_model_aq.compile()
 
     print("hls4ml model compilation complete.")
+
+
+    max_size,_ =calculate_max_hls_array_size(model)
+    if max_size > 4096:
+        update_tcl_config(save_path, max_size)
+
     return hls_model_aq, save_path
 
 
