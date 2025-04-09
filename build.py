@@ -8,7 +8,7 @@ import argparse
 
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 # For typical data and ML
 import numpy as np
@@ -97,8 +97,8 @@ def build_model(input_shape=(28, 28, 1), n_classes=10):
     Build and compile a baseline CNN model for MNIST.
     Returns the compiled keras Model.
     """
-    filters_per_conv_layer = [16, 24]
-    neurons_per_dense_layer = [42]
+    filters_per_conv_layer = [24, 16]
+    neurons_per_dense_layer = [24]
 
     x_in = Input(input_shape)
     x = x_in
