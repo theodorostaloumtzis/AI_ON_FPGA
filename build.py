@@ -6,6 +6,10 @@ import time
 import pprint
 import argparse
 
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["LD_PRELOAD"] = os.path.join(os.environ["CONDA_PREFIX"], "lib", "libstdc++.so.6")
+
 # For typical data and ML
 import numpy as np
 import tensorflow as tf
@@ -20,6 +24,21 @@ from tensorflow.keras.regularizers import l1
 # qkeras-related
 from qkeras.autoqkeras import AutoQKeras, print_qmodel_summary
 from qkeras import quantized_bits
+from qkeras import QConv2D, QDense, QActivation
+
+# Ensure custom QKeras layers are registered for serialization
+from keras.saving import register_keras_serializable
+register_keras_serializable(package="qkeras")(QConv2D)
+register_keras_serializable(package="qkeras")(QDense)
+register_keras_serializable(package="qkeras")(QActivation)
+
+
+from qkeras import (
+    QConv2D, QDense, QActivation, QBatchNormalization, QDepthwiseConv2D,
+    quantized_bits, quantized_relu
+)
+from keras.saving import register_keras_serializable
+
 
 # hls4ml-related
 import hls4ml
@@ -31,9 +50,10 @@ from hls4ml.report import read_vivado_report
 from utils.model_utils import save_model
 
 # Adjust environment variables to match your local paths
-os.environ['XILINX_VITIS'] = '/tools/Xilinx/Vitis/2024.2'
+os.environ['XILINX_VITIS'] = '/tools/Xilinx/Vitis/2024.2:/tools/Xilinx/Vitis/2020.1/'
 os.environ['PATH'] = '/tools/Xilinx/Vivado/2020.1/bin:' + os.environ['PATH']
 os.environ['PATH'] = '/tools/Xilinx/Vitis_HLS/2024.2/bin:' + os.environ['PATH']
+os.environ['PATH'] = '/tools/Xilinx/Vitis/2020.1/bin:' + os.environ['PATH']
 
 ###############################################################################
 # Basic data loading and model-building
@@ -238,10 +258,11 @@ def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5
     }
 
     autoqk = AutoQKeras(
-        model=model,
-        output_dir="autoqk_results",
-        **run_config
+      model=model,
+      output_dir="autoqk_results",
+      **run_config
     )
+
 
     space = autoqk.tuner.oracle.get_space()
     print("\nRegistered hyperparameters in AutoQKeras:")
@@ -262,7 +283,7 @@ def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5
 ###############################################################################
 
 
-def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104"):
+def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", part= 'xc7z020clg400-1'):
     """
     Evaluate the model, save it, and convert to HLS.
     If do_bitstream=True, we use the 'VivadoAccelerator' backend with a board name.
@@ -312,7 +333,7 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104"):
         cfg_aq['Board'] = board_name
     else:
         # Possibly specify a Xilinx part if you're doing normal Vitis or Vivado flow
-        cfg_aq['XilinxPart'] = 'xczu5ev-sfvc784-1-i'
+        cfg_aq['XilinxPart'] = part
 
     hls_model_aq = hls4ml.converters.keras_to_hls(cfg_aq)
     hls_model_aq.compile()
