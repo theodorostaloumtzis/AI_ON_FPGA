@@ -3,9 +3,9 @@ pandas
 matplotlib
 scikit-learn
 tensorflow==2.11
-hls4ml[profiling,optimization,sr,HGQ]==1.1.0
+hls4ml[profiling]==1.1.0
 sympy
-numpy==1.26.0
+numpy
 pydot
 graphviz
 tensorflow_datasets
@@ -13,3 +13,4 @@ tensorflow_model_optimization
 qkeras
 netron
 zstd
+IPython
