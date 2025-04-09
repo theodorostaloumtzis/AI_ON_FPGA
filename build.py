@@ -26,18 +26,13 @@ from qkeras.autoqkeras import AutoQKeras, print_qmodel_summary
 from qkeras import quantized_bits
 from qkeras import QConv2D, QDense, QActivation
 
-# Ensure custom QKeras layers are registered for serialization
-from keras.saving import register_keras_serializable
-register_keras_serializable(package="qkeras")(QConv2D)
-register_keras_serializable(package="qkeras")(QDense)
-register_keras_serializable(package="qkeras")(QActivation)
-
 
 from qkeras import (
     QConv2D, QDense, QActivation, QBatchNormalization, QDepthwiseConv2D,
     quantized_bits, quantized_relu
 )
-from keras.saving import register_keras_serializable
+from tensorflow.keras.utils import register_keras_serializable
+
 
 
 # hls4ml-related
