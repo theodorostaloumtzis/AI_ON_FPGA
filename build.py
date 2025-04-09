@@ -311,7 +311,7 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", pa
     # Convert to HLS
     print("\n--- Converting to HLS with hls4ml ---\n")
     hls_config_aq = hls4ml.utils.config_from_keras_model(model, granularity='name')
-    hls_config_aq['Model']['ReuseFactor'] = 8
+    hls_config_aq['Model']['ReuseFactor'] = 32
     hls_config_aq['Model']['Precision'] = 'ap_fixed<16,6>'
     hls_config_aq['LayerName']['output_softmax']['Strategy'] = 'Stable'
     plotting.print_dict(hls_config_aq)
@@ -339,11 +339,6 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", pa
     return hls_model_aq, save_path
 
 
-
-
-
-import os
-import re
 
 def update_tcl_config(project_dir: str, new_max_size: int, default_part: str = 'xc7z020clg400-1'):
     """
