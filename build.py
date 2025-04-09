@@ -97,7 +97,7 @@ def build_model(input_shape=(28, 28, 1), n_classes=10):
     Build and compile a baseline CNN model for MNIST.
     Returns the compiled keras Model.
     """
-    filters_per_conv_layer = [24, 16]
+    filters_per_conv_layer = [16, 8]
     neurons_per_dense_layer = [24]
 
     x_in = Input(input_shape)
@@ -117,7 +117,7 @@ def build_model(input_shape=(28, 28, 1), n_classes=10):
         )(x)
         x = BatchNormalization(name='bn_conv_{}'.format(i))(x)
         x = Activation('relu', name='conv_act_%i' % i)(x)
-        x = MaxPooling2D(pool_size=(2, 2), name='pool_{}'.format(i))(x)
+        x = MaxPooling2D(pool_size=(2,2), name='pool_{}'.format(i))(x)
 
     # Flatten + Dense blocks
     x = Flatten()(x)
