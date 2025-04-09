@@ -2,6 +2,7 @@
 # coding: utf-8
 
 import os
+import re
 import time
 import pprint
 import argparse
@@ -336,6 +337,82 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", pa
 
     print("hls4ml model compilation complete.")
     return hls_model_aq, save_path
+
+
+
+
+
+import os
+import re
+
+def update_tcl_config(project_dir: str, new_max_size: int, default_part: str = 'xc7z020clg400-1'):
+    """
+    Updates the 'set maximum_size' and 'set part' lines in the project.tcl file.
+    - Sets maximum_size to new_max_size.
+    - Replaces part with default_part if it is different.
+    """
+    project_tcl_path = os.path.join(project_dir, 'project.tcl')
+
+    if not os.path.exists(project_tcl_path):
+        print(f"X File not found: {project_tcl_path}")
+        return
+
+    with open(project_tcl_path, 'r') as file:
+        lines = file.readlines()
+
+    max_pattern = re.compile(r'^set\s+maximum_size\s+\d+\s*$')
+    part_pattern = re.compile(r'^set\s+part\s+"([^"]+)"\s*$')
+
+    max_updated = False
+    part_updated = False
+
+    for i, line in enumerate(lines):
+        if max_pattern.match(line):
+            lines[i] = f"set maximum_size {new_max_size}\n"
+            max_updated = True
+        elif part_pattern.match(line):
+            current_part = part_pattern.match(line).group(1)
+            if current_part != default_part:
+                lines[i] = f'set part "{default_part}"\n'
+                part_updated = True
+
+    if not max_updated:
+        print("!!! 'set maximum_size' not found. Appending it.")
+        lines.append(f"set maximum_size {new_max_size}\n")
+
+    with open(project_tcl_path, 'w') as file:
+        file.writelines(lines)
+
+    print(f" maximum_size set to {new_max_size}")
+    if part_updated:
+        print(f" part overridden to '{default_part}'")
+    else:
+        print(f" part already matches '{default_part}'")
+
+
+
+
+def calculate_max_hls_array_size(model: Model):
+    max_size = 0
+    layer_sizes = []
+
+    for layer in model.layers:
+        if isinstance(layer, Dense):
+            input_size = np.prod(layer.input_shape[1:])  # Flattened input
+            output_size = layer.units
+            size = input_size * output_size
+            layer_sizes.append((layer.name, size))
+            max_size = max(max_size, size)
+
+        elif isinstance(layer, Conv2D):
+            kernel_size = np.prod(layer.kernel_size)
+            input_channels = int(layer.input_shape[-1])
+            output_channels = int(layer.filters)
+            size = kernel_size * input_channels * output_channels
+            layer_sizes.append((layer.name, size))
+            max_size = max(max_size, size)
+
+    return max_size, layer_sizes
 
 
 def finalize_hls_project(hls_model, project_dir, do_synth=False, do_report=False, do_bitstream=False):
