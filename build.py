@@ -8,7 +8,7 @@ import argparse
 
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-os.environ["LD_PRELOAD"] = os.path.join(os.environ["CONDA_PREFIX"], "lib", "libstdc++.so.6")
+
 
 # For typical data and ML
 import numpy as np
