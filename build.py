@@ -6,6 +6,10 @@ import time
 import pprint
 import argparse
 
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["LD_PRELOAD"] = os.path.join(os.environ["CONDA_PREFIX"], "lib", "libstdc++.so.6")
+
 # For typical data and ML
 import numpy as np
 import tensorflow as tf
@@ -20,6 +24,16 @@ from tensorflow.keras.regularizers import l1
 # qkeras-related
 from qkeras.autoqkeras import AutoQKeras, print_qmodel_summary
 from qkeras import quantized_bits
+from qkeras import QConv2D, QDense, QActivation
+
+
+from qkeras import (
+    QConv2D, QDense, QActivation, QBatchNormalization, QDepthwiseConv2D,
+    quantized_bits, quantized_relu
+)
+from tensorflow.keras.utils import register_keras_serializable
+
+
 
 # hls4ml-related
 import hls4ml
@@ -31,9 +45,10 @@ from hls4ml.report import read_vivado_report
 from utils.model_utils import save_model
 
 # Adjust environment variables to match your local paths
-os.environ['XILINX_VITIS'] = '/tools/Xilinx/Vitis/2024.2'
+os.environ['XILINX_VITIS'] = '/tools/Xilinx/Vitis/2024.2:/tools/Xilinx/Vitis/2020.1/'
 os.environ['PATH'] = '/tools/Xilinx/Vivado/2020.1/bin:' + os.environ['PATH']
 os.environ['PATH'] = '/tools/Xilinx/Vitis_HLS/2024.2/bin:' + os.environ['PATH']
+os.environ['PATH'] = '/tools/Xilinx/Vitis/2020.1/bin:' + os.environ['PATH']
 
 ###############################################################################
 # Basic data loading and model-building
@@ -238,10 +253,11 @@ def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5
     }
 
     autoqk = AutoQKeras(
-        model=model,
-        output_dir="autoqk_results",
-        **run_config
+      model=model,
+      output_dir="autoqk_results",
+      **run_config
     )
+
 
     space = autoqk.tuner.oracle.get_space()
     print("\nRegistered hyperparameters in AutoQKeras:")
@@ -262,7 +278,7 @@ def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5
 ###############################################################################
 
 
-def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104"):
+def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", part= 'xc7z020clg400-1'):
     """
     Evaluate the model, save it, and convert to HLS.
     If do_bitstream=True, we use the 'VivadoAccelerator' backend with a board name.
@@ -312,7 +328,7 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104"):
         cfg_aq['Board'] = board_name
     else:
         # Possibly specify a Xilinx part if you're doing normal Vitis or Vivado flow
-        cfg_aq['XilinxPart'] = 'xczu5ev-sfvc784-1-i'
+        cfg_aq['XilinxPart'] = part
 
     hls_model_aq = hls4ml.converters.keras_to_hls(cfg_aq)
     hls_model_aq.compile()
@@ -353,64 +369,87 @@ def finalize_hls_project(hls_model, project_dir, do_synth=False, do_report=False
         print("\nNo synthesis or bitstream build requested. Done.")
 
 
+def process_best_autoqkeras_model(best_model, train_data, val_data, test_data, n_epochs):
+    """
+    Fine-tune, recompile, evaluate, and prepare the best AutoQKeras model for HLS.
+    Returns the finalized model.
+    """
+    print("\n--- Processing Best AutoQKeras Model ---\n")
+
+    callbacks = [
+        tf.keras.callbacks.EarlyStopping(patience=10, verbose=1),
+        tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1),
+    ]
+
+    start = time.time()
+    history = best_model.fit(train_data, epochs=n_epochs, validation_data=val_data, callbacks=callbacks, verbose=1)
+    end = time.time()
+    print('\n⏱️ Training completed in {:.2f} minutes\n'.format((end - start) / 60.0))
+
+    best_model.save_weights("autoqkeras_cnn_weights.h5")
+
+    # Rebuild and recompile model
+    layers = [l for l in best_model.layers]
+    x = layers[0].output
+    for i in range(1, len(layers)):
+        x = layers[i](x)
+
+    new_model = Model(inputs=[layers[0].input], outputs=[x])
+    new_model.compile(
+        loss=tf.keras.losses.CategoricalCrossentropy(),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=3e-3, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=True),
+        metrics=["accuracy"]
+    )
+    new_model.summary()
+    new_model.load_weights("autoqkeras_cnn_weights.h5")
+
+    # Evaluation
+    results = new_model.evaluate(test_data, verbose=2)
+    metrics = dict(zip(new_model.metrics_names, results))
+    print("\nAutoQKeras best model test metrics:")
+    for k, v in metrics.items():
+        print(f"  {k}: {v:.4f}")
+
+    return new_model
+
+
 ###############################################################################
 # Main entry point
 ###############################################################################
 
 
 def main():
-    # Parse command-line flags
     parser = argparse.ArgumentParser(description="Train, evaluate, optionally run AutoQKeras, and optionally do HLS synthesis or bitstream generation.")
     parser.add_argument("--epochs", type=int, default=2, help="Number of training epochs for both baseline model and AutoQKeras search.")
     parser.add_argument("--synth", action="store_true", help="Run HLS synthesis with Vivado HLS.")
     parser.add_argument("--report", action="store_true", help="Read Vivado utilization report after building.")
     parser.add_argument("--bitstream", action="store_true", help="Run bitstream generation with Vivado Accelerator.")
-    parser.add_argument("--board", type=str, default="ZCU104",
-                        help="Board name for bitstream generation if --bitstream is set.")
+    parser.add_argument("--board", type=str, default="ZCU104", help="Board name for bitstream generation if --bitstream is set.")
     parser.add_argument("--autoqk", action="store_true", help="Whether to run AutoQKeras search after the baseline training.")
     parser.add_argument("--max-trials", type=int, default=5, help="Max trials for the AutoQKeras search.")
     args = parser.parse_args()
 
-    # Because you said 'synth' and 'bitstream' are mutually exclusive flows,
-    # let's check:
     if args.synth and args.bitstream:
         print("\nERROR: --synth and --bitstream cannot both be used in the same run.")
-        print("They require different tool flows. Please run them separately.\n")
-        return  # Exit early
+        return
 
-    # 1) Prepare data
     train_data, val_data, test_data = prepare_data()
-
-    # 2) Build the baseline Keras model
     model = build_model(input_shape=(28, 28, 1), n_classes=10)
-
-    # 3) Train the baseline model
     model = train_model(model, train_data, val_data, test_data, n_epochs=args.epochs)
 
-    # 4) (Optional) Run AutoQKeras search
     if args.autoqk:
         print("\n--- Running AutoQKeras Search ---\n")
         autoqk = run_autoqkeras_tuning(model, train_data, val_data,
                                        n_epochs=args.epochs,
                                        max_trials=args.max_trials)
 
-        # Get the best model found by AutoQKeras
         best_model = autoqk.get_best_model()
-        # Evaluate the best model on the test set if desired
-        # or you can do more advanced logic here.
-        # We'll just do a quick test (optional)
-        loss, acc = best_model.evaluate(test_data, verbose=2)
-        print(f"\nAutoQKeras best model test loss={loss:.4f}, accuracy={acc:.4f}")
+        model = process_best_autoqkeras_model(best_model, train_data, val_data, test_data, args.epochs)
 
-        # If you want to push this 'best_model' forward to HLS, do so:
-        model = best_model  # Overwrite or rename to avoid confusion
-
-    # 5) Evaluate/save & do an hls4ml conversion
     hls_model, hls_project_path = evaluate_model(model, test_data,
                                                  do_bitstream=args.bitstream,
                                                  board_name=args.board)
 
-    # 6) Possibly do synthesis OR bitstream, but not both
     finalize_hls_project(
         hls_model=hls_model,
         project_dir=hls_project_path,
@@ -418,6 +457,7 @@ def main():
         do_report=args.report,
         do_bitstream=args.bitstream
     )
+
 
 
 if __name__ == "__main__":
