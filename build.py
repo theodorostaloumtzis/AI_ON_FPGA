@@ -38,7 +38,7 @@ from tensorflow.keras.utils import register_keras_serializable
 # hls4ml-related
 import hls4ml
 # hls4ml's built-in plotting utility for printing configs
-import utils.plotting
+import utils.plotting as plotting
 from hls4ml.report import read_vivado_report
 
 # Utility modules (you must ensure these are available)
@@ -384,7 +384,7 @@ def process_best_autoqkeras_model(best_model, train_data, val_data, test_data, n
     start = time.time()
     history = best_model.fit(train_data, epochs=n_epochs, validation_data=val_data, callbacks=callbacks, verbose=1)
     end = time.time()
-    print('\n⏱️ Training completed in {:.2f} minutes\n'.format((end - start) / 60.0))
+    print('\n Training completed in {:.2f} minutes\n'.format((end - start) / 60.0))
 
     best_model.save_weights("autoqkeras_cnn_weights.h5")
 
