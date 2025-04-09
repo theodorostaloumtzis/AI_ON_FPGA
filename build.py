@@ -146,6 +146,7 @@ def build_model(input_shape=(28, 28, 1), n_classes=10):
     )
 
     model.compile(loss=loss_fn, optimizer=optimizer, metrics=["accuracy"])
+    model.summary()
     return model
 
 
