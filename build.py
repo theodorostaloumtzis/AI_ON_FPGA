@@ -98,7 +98,7 @@ def build_model(input_shape=(28, 28, 1), n_classes=10):
     Build and compile a baseline CNN model for MNIST.
     Returns the compiled keras Model.
     """
-    filters_per_conv_layer = [16, 8, 8]
+    filters_per_conv_layer = [8, 8, 16]
     neurons_per_dense_layer = [42, 64]
 
     x_in = Input(input_shape)
@@ -248,8 +248,8 @@ def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5
         "mode": "bayesian",  # or "random", "hyperband" etc.
         "seed": 42,
         "limit": limit,
-        "tune_filters": "none",
-        "tune_filters_exceptions": "",
+        "tune_filters": "layer",
+        "tune_filters_exceptions": "^output",
         "distribution_strategy": None,
         "max_trials": max_trials,  # <-- Using your custom flag
     }
