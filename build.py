@@ -99,7 +99,7 @@ def build_model(input_shape=(28, 28, 1), n_classes=10):
     Returns the compiled keras Model.
     """
     filters_per_conv_layer = [16, 8, 8]
-    neurons_per_dense_layer = [24]
+    neurons_per_dense_layer = [24, 42]
 
     x_in = Input(input_shape)
     x = x_in
@@ -216,7 +216,7 @@ def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5
     }
 
     limit = {
-        "conv": [16, 8, 8],
+        "conv": [8, 8, 16],
         "dense": [8, 16],
         "act": [16]
     }
