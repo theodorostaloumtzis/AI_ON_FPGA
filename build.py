@@ -280,7 +280,7 @@ def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5
 ###############################################################################
 
 
-def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", part= 'xc7z020clg400-1'):
+def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", part= 'xc7z020clg400-1', reuse= 8):
     """
     Evaluate the model, save it, and convert to HLS.
     If do_bitstream=True, we use the 'VivadoAccelerator' backend with a board name.
@@ -311,7 +311,7 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", pa
     # Convert to HLS
     print("\n--- Converting to HLS with hls4ml ---\n")
     hls_config_aq = hls4ml.utils.config_from_keras_model(model, granularity='name')
-    hls_config_aq['Model']['ReuseFactor'] = 32
+    hls_config_aq['Model']['ReuseFactor'] = reuse
     hls_config_aq['Model']['Precision'] = 'ap_fixed<16,6>'
     hls_config_aq['LayerName']['output_softmax']['Strategy'] = 'Stable'
     plotting.print_dict(hls_config_aq)
@@ -509,6 +509,7 @@ def main():
     parser.add_argument("--board", type=str, default="ZCU104", help="Board name for bitstream generation if --bitstream is set.")
     parser.add_argument("--autoqk", action="store_true", help="Whether to run AutoQKeras search after the baseline training.")
     parser.add_argument("--max-trials", type=int, default=5, help="Max trials for the AutoQKeras search.")
+    parser.add_argument("--reuse", type=int, default=8, help="Reuse factor for the hls model to reduce resources utilization.")
     args = parser.parse_args()
 
     if args.synth and args.bitstream:
@@ -530,7 +531,8 @@ def main():
 
     hls_model, hls_project_path = evaluate_model(model, test_data,
                                                  do_bitstream=args.bitstream,
-                                                 board_name=args.board)
+                                                 board_name=args.board,
+                                                 reuse = args.reuse)
 
     finalize_hls_project(
         hls_model=hls_model,
