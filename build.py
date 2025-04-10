@@ -339,8 +339,11 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", pa
 
 
     max_size,_ =calculate_max_hls_array_size(model)
-    if max_size > 4096:
-        update_tcl_config(save_path, max_size)
+    if max_size < 4096:
+        max_size = 4096 
+        
+    
+    update_tcl_config(save_path, max_size)
 
     return hls_model_aq, save_path
 
