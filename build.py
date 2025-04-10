@@ -99,7 +99,7 @@ def build_model(input_shape=(28, 28, 1), n_classes=10):
     Returns the compiled keras Model.
     """
     filters_per_conv_layer = [16, 8, 8]
-    neurons_per_dense_layer = [24, 42]
+    neurons_per_dense_layer = [42, 64]
 
     x_in = Input(input_shape)
     x = x_in
