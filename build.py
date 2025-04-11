@@ -7,7 +7,6 @@ import time
 import pprint
 import argparse
 
-
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
@@ -34,7 +33,7 @@ from qkeras import (
 )
 from tensorflow.keras.utils import register_keras_serializable
 
-
+from utils.model_manager import ModelManager
 
 # hls4ml-related
 import hls4ml
@@ -93,64 +92,6 @@ def prepare_data():
     return train_data, val_data, test_data
 
 
-def build_model(input_shape=(28, 28, 1), n_classes=10):
-    """
-    Build and compile a baseline CNN model for MNIST.
-    Returns the compiled keras Model.
-    """
-    filters_per_conv_layer = [8, 8, 16]
-    neurons_per_dense_layer = [42, 64]
-
-    x_in = Input(input_shape)
-    x = x_in
-
-    # Convolutional blocks
-    for i, f in enumerate(filters_per_conv_layer):
-        print(f"Adding convolutional block {i} with N={f} filters")
-        x = Conv2D(
-            f,
-            kernel_size=(3, 3),
-            strides=(1, 1),
-            kernel_initializer='lecun_uniform',
-            kernel_regularizer=l1(0.0001),
-            use_bias=False,
-            name='conv_{}'.format(i),
-        )(x)
-        x = BatchNormalization(name='bn_conv_{}'.format(i))(x)
-        x = Activation('relu', name='conv_act_%i' % i)(x)
-        x = MaxPooling2D(pool_size=(2,2), name='pool_{}'.format(i))(x)
-
-    # Flatten + Dense blocks
-    x = Flatten()(x)
-    for i, n in enumerate(neurons_per_dense_layer):
-        print(f"Adding dense block {i} with N={n} neurons")
-        x = Dense(
-            n,
-            kernel_initializer='lecun_uniform',
-            kernel_regularizer=l1(0.0001),
-            use_bias=False,
-            name='dense_%i' % i
-        )(x)
-        x = BatchNormalization(name='bn_dense_{}'.format(i))(x)
-        x = Activation('relu', name='dense_act_%i' % i)(x)
-
-    # Final classification
-    x = Dense(n_classes, name='output_dense')(x)
-    x_out = Activation('softmax', name='output_softmax')(x)
-
-    model = Model(inputs=[x_in], outputs=[x_out], name='keras_baseline')
-
-    loss_fn = tf.keras.losses.CategoricalCrossentropy()
-    optimizer = tf.keras.optimizers.legacy.Adam(
-        learning_rate=3e-3, beta_1=0.9, beta_2=0.999,
-        epsilon=1e-07, amsgrad=True
-    )
-
-    model.compile(loss=loss_fn, optimizer=optimizer, metrics=["accuracy"])
-    model.summary()
-    return model
-
-
 def train_model(model, train_data, val_data, test_data, n_epochs=10):
     """
     Train the given model on train_data and val_data, evaluate on test_data.
@@ -178,7 +119,8 @@ def train_model(model, train_data, val_data, test_data, n_epochs=10):
 ###############################################################################
 
 
-def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5):
+def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5, model_type="cnn"):
+
     """
     Illustrates how to run AutoQKeras for quantization tuning.
     It uses the same 'epochs' as the baseline training, and
@@ -214,12 +156,19 @@ def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5
             "quantized_bits(8,0,1,alpha=1.0)": 8,
         },
     }
+    limit = {}
+    if model_type == "cnn":
+        limit = {
+            "conv": [8, 8, 16],
+            "dense": [8, 16],
+            "act": [16]
+        }
+    elif model_type == "mlp":
+        limit = {
+            "dense": [64, 32],
+            "act": [32]
+        }
 
-    limit = {
-        "conv": [8, 8, 16],
-        "dense": [8, 16],
-        "act": [16]
-    }
 
     # Example 'goal' using energy
     goal_energy = {
@@ -528,6 +477,9 @@ def main():
     parser.add_argument("--max-trials", type=int, default=5, help="Max trials for the AutoQKeras search.")
     parser.add_argument("--reuse", type=int, default=8, help="Reuse factor for the hls model to reduce resources utilization.")
     parser.add_argument("--strat", type=str, default="Resource", help=strategy_full_help)
+    parser.add_argument("--model-type", type=str, default="cnn", choices=["cnn", "mlp"],
+                    help="Type of model to build: 'cnn' or 'mlp'.")
+
     args = parser.parse_args()
 
     if args.synth and args.bitstream:
@@ -535,17 +487,26 @@ def main():
         return
 
     train_data, val_data, test_data = prepare_data()
-    model = build_model(input_shape=(28, 28, 1), n_classes=10)
+
+    # Build model using ModelManager class
+    model_manager = ModelManager(model_type=args.model_type,
+                                input_shape=(28, 28, 1),
+                                n_classes=10)
+    model = model_manager.build_model()
+
     model = train_model(model, train_data, val_data, test_data, n_epochs=args.epochs)
 
     if args.autoqk:
         print("\n--- Running AutoQKeras Search ---\n")
         autoqk = run_autoqkeras_tuning(model, train_data, val_data,
-                                       n_epochs=args.epochs,
-                                       max_trials=args.max_trials)
+                               n_epochs=args.epochs,
+                               max_trials=args.max_trials,
+                               model_type=args.model_type)
 
         best_model = autoqk.get_best_model()
-        model = process_best_autoqkeras_model(best_model, train_data, val_data, test_data, args.epochs)
+        model = process_best_autoqkeras_model(best_model, train_data, val_data, test_data,
+                                            n_epochs=args.epochs, model_type=args.model_type)
+
 
     hls_model, hls_project_path = evaluate_model(model, test_data,
                                                  do_bitstream=args.bitstream,
