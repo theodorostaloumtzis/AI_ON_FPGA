@@ -280,7 +280,7 @@ def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5
 ###############################################################################
 
 
-def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", part= 'xc7z020clg400-1', reuse= 8):
+def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", part= 'xc7z020clg400-1', reuse= 8, strat='Resource'):
     """
     Evaluate the model, save it, and convert to HLS.
     If do_bitstream=True, we use the 'VivadoAccelerator' backend with a board name.
@@ -313,6 +313,7 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", pa
     hls_config_aq = hls4ml.utils.config_from_keras_model(model, granularity='name')
     hls_config_aq['Model']['ReuseFactor'] = reuse
     hls_config_aq['Model']['Precision'] = 'ap_fixed<16,6>'
+    hls_config_aq['Model']['Strategy'] = strat
     hls_config_aq['LayerName']['output_softmax']['Strategy'] = 'Stable'
     plotting.print_dict(hls_config_aq)
 
@@ -501,6 +502,22 @@ def process_best_autoqkeras_model(best_model, train_data, val_data, test_data, n
 
 
 def main():
+    strategy_full_help = (
+    "Strategy determines the hardware optimization approach used during High-Level Synthesis (HLS). "
+    "It controls how the neural network is translated into digital logic, specifically balancing between latency, "
+    "resource usage, and performance.\n\n"
+    "Available Strategy options:\n"
+    "  - Latency:   Minimize inference time by increasing parallelism and pipelining. "
+    "Uses more FPGA resources to achieve the fastest possible execution.\n"
+    "  - Resource(Default):  Minimize FPGA resource usage by reusing computation units. "
+    "Leads to slower inference but fits better on smaller or resource-constrained FPGAs.\n"
+    "  - Balanced:  Strike a balance between resource usage and latency. "
+    "A general-purpose option for most applications.\n"
+    "  - None:      Use the default strategy as determined by the synthesis tool. "
+    "Behavior depends on other configuration settings and the HLS backend.\n\n"
+    "Choose the strategy that best matches your application's constraints and performance goals."
+)
+
     parser = argparse.ArgumentParser(description="Train, evaluate, optionally run AutoQKeras, and optionally do HLS synthesis or bitstream generation.")
     parser.add_argument("--epochs", type=int, default=2, help="Number of training epochs for both baseline model and AutoQKeras search.")
     parser.add_argument("--synth", action="store_true", help="Run HLS synthesis with Vivado HLS.")
@@ -510,6 +527,7 @@ def main():
     parser.add_argument("--autoqk", action="store_true", help="Whether to run AutoQKeras search after the baseline training.")
     parser.add_argument("--max-trials", type=int, default=5, help="Max trials for the AutoQKeras search.")
     parser.add_argument("--reuse", type=int, default=8, help="Reuse factor for the hls model to reduce resources utilization.")
+    parser.add_argument("--strat", type=str, default="Resource", help=strategy_full_help)
     args = parser.parse_args()
 
     if args.synth and args.bitstream:
@@ -532,7 +550,8 @@ def main():
     hls_model, hls_project_path = evaluate_model(model, test_data,
                                                  do_bitstream=args.bitstream,
                                                  board_name=args.board,
-                                                 reuse = args.reuse)
+                                                 reuse= args.reuse,
+                                                 strat= args.strat)
 
     finalize_hls_project(
         hls_model=hls_model,
