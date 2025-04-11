@@ -343,7 +343,111 @@ def update_tcl_config(project_dir: str, new_max_size: int, default_part: str = '
     else:
         print(f" part already matches '{default_part}'")
 
+from qkeras import (
+    QConv2D, QDense, QActivation, QBatchNormalization,
+    quantized_bits, quantized_relu
+)
+from tensorflow.keras.models import clone_model
+from tensorflow.keras.layers import Dense, Conv2D, Activation, BatchNormalization
 
+def quantize_model(model):
+    """
+    Quantizes a Keras model by converting Dense, Conv2D, Activation, and BatchNormalization
+    layers to their QKeras equivalents. Compatible with both CNN and MLP architectures.
+    """
+    def convert_layer(layer):
+        cfg = layer.get_config()
+
+        if isinstance(layer, Dense):
+            return QDense(
+                units=cfg["units"],
+                name=cfg["name"],
+                kernel_initializer=cfg["kernel_initializer"],
+                kernel_regularizer=cfg["kernel_regularizer"],
+                use_bias=cfg["use_bias"],
+                kernel_quantizer="quantized_bits(8,0,1)",
+                bias_quantizer="quantized_bits(8,0,1)"
+            )
+
+        elif isinstance(layer, Conv2D):
+            return QConv2D(
+                filters=cfg["filters"],
+                kernel_size=cfg["kernel_size"],
+                strides=cfg["strides"],
+                padding=cfg["padding"],
+                kernel_initializer=cfg["kernel_initializer"],
+                kernel_regularizer=cfg["kernel_regularizer"],
+                use_bias=cfg["use_bias"],
+                name=cfg["name"],
+                kernel_quantizer="quantized_bits(8,0,1)",
+                bias_quantizer="quantized_bits(8,0,1)"
+            )
+
+        elif isinstance(layer, Activation):
+            return QActivation("quantized_relu(8,2)", name=cfg["name"])
+
+        elif isinstance(layer, BatchNormalization):
+            return QBatchNormalization(name=cfg["name"])
+
+        else:
+            return layer.__class__.from_config(cfg)
+
+    print("\n--- Quantizing model using QKeras (CNN + MLP support) ---\n")
+
+    quantized_model = clone_model(model, clone_function=convert_layer)
+    quantized_model.compile(
+        loss=model.loss,
+        optimizer=model.optimizer,
+        metrics=model.metrics
+    )
+    quantized_model.build(input_shape=model.input_shape)
+    quantized_model.summary()
+    return quantized_model
+
+
+import tensorflow_model_optimization as tfmot
+
+def prune_mlp_model(model, train_data, val_data, n_epochs=5):
+    """
+    Applies pruning to all Dense layers in the MLP model.
+    Returns the stripped model after pruning and fine-tuning.
+    """
+
+    prune_low_magnitude = tfmot.sparsity.keras.prune_low_magnitude
+
+    pruning_params = {
+        'pruning_schedule': tfmot.sparsity.keras.PolynomialDecay(
+            initial_sparsity=0.2,
+            final_sparsity=0.8,
+            begin_step=0,
+            end_step=np.ceil(len(train_data) * n_epochs)
+        )
+    }
+
+    pruned_model = prune_low_magnitude(model, **pruning_params)
+
+    pruned_model.compile(
+        loss=tf.keras.losses.CategoricalCrossentropy(),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+        metrics=['accuracy']
+    )
+
+    callbacks = [
+        tfmot.sparsity.keras.UpdatePruningStep(),
+        tf.keras.callbacks.EarlyStopping(patience=3, restore_best_weights=True)
+    ]
+
+    print("\n--- Training pruned MLP model ---\n")
+    pruned_model.fit(train_data, validation_data=val_data,
+                     epochs=n_epochs, callbacks=callbacks, verbose=2)
+
+    # Strip pruning wrappers to get final model
+    final_model = tfmot.sparsity.keras.strip_pruning(pruned_model)
+
+    print("\n--- Stripped final pruned MLP model ---\n")
+    final_model.summary()
+
+    return final_model
 
 
 def calculate_max_hls_array_size(model: Model):
@@ -498,16 +602,26 @@ def main():
 
     model = train_model(model, train_data, val_data, test_data, n_epochs=args.epochs)
 
+    # If NOT using AutoQKeras, prune (MLP) and quantize manually
+    if not args.autoqk:
+        if args.model_type == "mlp":
+            print("\n--- Pruning MLP Model ---\n")
+            model = prune_mlp_model(model, train_data, val_data, n_epochs=5)
+
+        print("\n--- Quantizing Model ---\n")
+        model = quantize_model(model)
+
     if args.autoqk:
         print("\n--- Running AutoQKeras Search ---\n")
         autoqk = run_autoqkeras_tuning(model, train_data, val_data,
-                               n_epochs=args.epochs,
-                               max_trials=args.max_trials,
-                               model_type=args.model_type)
+                                       n_epochs=args.epochs,
+                                       max_trials=args.max_trials,
+                                       model_type=args.model_type)
 
         best_model = autoqk.get_best_model()
         model = process_best_autoqkeras_model(best_model, train_data, val_data, test_data,
-                                            n_epochs=args.epochs, model_type=args.model_type)
+                                              n_epochs=args.epochs, model_type=args.model_type)
+
 
 
     hls_model, hls_project_path = evaluate_model(model, test_data,
