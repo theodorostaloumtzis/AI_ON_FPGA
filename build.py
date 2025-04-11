@@ -396,7 +396,7 @@ def quantize_model(model):
 
     quantized_model = clone_model(model, clone_function=convert_layer)
     quantized_model.compile(
-        loss=model.loss,
+        loss=tf.keras.losses.CategoricalCrossentropy(),
         optimizer=model.optimizer,
         metrics=model.metrics
     )
