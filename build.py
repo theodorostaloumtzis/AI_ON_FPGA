@@ -401,7 +401,8 @@ def finalize_hls_project(hls_model, project_dir, do_synth=False, do_report=False
         print("\nNo synthesis or bitstream build requested. Done.")
 
 
-def process_best_autoqkeras_model(best_model, train_data, val_data, test_data, n_epochs):
+def process_best_autoqkeras_model(best_model, train_data, val_data, test_data, n_epochs, model_type="cnn"):
+
     """
     Fine-tune, recompile, evaluate, and prepare the best AutoQKeras model for HLS.
     Returns the finalized model.
@@ -418,7 +419,8 @@ def process_best_autoqkeras_model(best_model, train_data, val_data, test_data, n
     end = time.time()
     print('\n Training completed in {:.2f} minutes\n'.format((end - start) / 60.0))
 
-    best_model.save_weights("autoqkeras_cnn_weights.h5")
+    weight_file = f"autoqkeras_{model_type}_weights.h5"
+    best_model.save_weights(weight_file)
 
     # Rebuild and recompile model
     layers = [l for l in best_model.layers]
@@ -433,7 +435,7 @@ def process_best_autoqkeras_model(best_model, train_data, val_data, test_data, n
         metrics=["accuracy"]
     )
     new_model.summary()
-    new_model.load_weights("autoqkeras_cnn_weights.h5")
+    new_model.load_weights(weight_file)
 
     # Evaluation
     results = new_model.evaluate(test_data, verbose=2)
