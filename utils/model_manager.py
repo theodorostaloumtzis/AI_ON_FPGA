@@ -65,12 +65,12 @@ class ModelManager:
 
 
     def _build_mlp_model(self):
-        neurons_per_layer = [128, 64]
+        neurons = self.config["cnn"]["neurons_per_layer"]
 
         x_in = Input(self.input_shape)
         x = Flatten()(x_in)
 
-        for i, n in enumerate(neurons_per_layer):
+        for i, n in enumerate(neurons):
             x = Dense(
                 n,
                 kernel_initializer='lecun_uniform',
