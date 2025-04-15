@@ -52,7 +52,7 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="pynq-z2", p
     return hls_model_aq, save_path
 
 def reuse_percentage_to_factors(model, percent):
-    from ..trainer.trainer import get_valid_reuse_factors_for_model
+    from trainer.trainer import get_valid_reuse_factors_for_model
     valid_reuse_map = get_valid_reuse_factors_for_model(model)
     per_layer_reuse = {}
     for layer_name, reuse_list in valid_reuse_map.items():
