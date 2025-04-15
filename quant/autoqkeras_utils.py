@@ -33,11 +33,7 @@ def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5
         },
     }
 
-    limit = {}
-    if model_type == "cnn":
-        limit = {"conv": [8, 8, 16], "dense": [8, 16], "act": [16]}
-    elif model_type == "mlp":
-        limit = {"dense": [64, 32], "act": [32]}
+    limit = get_autoqkeras_limits(model)
 
     goal_energy = {
         "type": "energy",
@@ -76,6 +72,17 @@ def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5
     print("\n--- Running AutoQKeras search ---\n")
     autoqk.fit(x=train_data, validation_data=val_data, epochs=n_epochs)
     return autoqk
+
+def get_autoqkeras_limits(model):
+    limit = {"conv": [], "dense": [], "act": []}
+    for layer in model.layers:
+        if isinstance(layer, tf.keras.layers.Conv2D):
+            limit["conv"].append(layer.filters)
+        elif isinstance(layer, tf.keras.layers.Dense):
+            limit["dense"].append(layer.units)
+        elif isinstance(layer, tf.keras.layers.Activation):
+            limit["act"].append(16)  # default max act width
+    return limit
 
 def process_best_autoqkeras_model(best_model, train_data, val_data, test_data, n_epochs, model_type="cnn"):
     print("\n--- Processing Best AutoQKeras Model ---\n")
