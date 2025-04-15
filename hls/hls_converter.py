@@ -10,7 +10,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Model
 
-def evaluate_model(model, test_data, do_bitstream=False, board_name="ZCU104", part='xc7z020clg400-1', reuse=1.0, strat='Resource'):
+def evaluate_model(model, test_data, do_bitstream=False, board_name="pynq-z2", part='xc7z020clg400-1', reuse=1.0, strat='Resource'):
     print("\n--- Evaluating/Saving Model ---\n")
 
     model_dir = "models"
