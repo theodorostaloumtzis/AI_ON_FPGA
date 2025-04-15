@@ -104,3 +104,28 @@ def prune_mlp_model(model, train_data, val_data, n_epochs=5):
     final_model.summary()
 
     return final_model
+
+def get_valid_reuse_factors_for_model(model):
+    def get_divisors(n):
+        return sorted(set(
+            d for i in range(1, int(n**0.5) + 1)
+            if n % i == 0 for d in (i, n // i)
+        ))
+
+    reuse_map = {}
+    for layer in model.layers:
+        cfg = layer.get_config()
+        if isinstance(layer, tf.keras.layers.Conv2D):
+            k_h, k_w = cfg['kernel_size']
+            in_ch = int(layer.input_shape[-1])
+            out_ch = cfg['filters']
+            total_ops = k_h * k_w * in_ch * out_ch
+        elif isinstance(layer, tf.keras.layers.Dense):
+            in_features = int(layer.input_shape[-1])
+            out_features = cfg['units']
+            total_ops = in_features * out_features
+        else:
+            continue
+        reuse_map[layer.name] = get_divisors(total_ops)
+
+    return reuse_map
