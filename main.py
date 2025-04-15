@@ -1,6 +1,7 @@
 # main.py
 from datetime import datetime
 import sys
+import os
 
 def init_run_log():
     os.makedirs("logs", exist_ok=True)
@@ -19,7 +20,7 @@ from utils.model_manager import ModelManager
 
 def main():
     init_run_log()
-    
+
     strategy_full_help = (
         "Strategy determines the hardware optimization approach used during High-Level Synthesis (HLS). "
         "It controls how the neural network is translated into digital logic, specifically balancing between latency, "
