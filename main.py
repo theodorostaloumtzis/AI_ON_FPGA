@@ -4,7 +4,7 @@ import argparse
 from config.config import setup_environment
 from data.data_pipeline import prepare_data
 from trainer.trainer import train_model, prune_mlp_model, quantize_model
-from autoqkeras_utils import run_autoqkeras_tuning, process_best_autoqkeras_model
+from quant.autoqkeras_utils import run_autoqkeras_tuning, process_best_autoqkeras_model
 from hls.hls_converter import evaluate_model, finalize_hls_project
 from utils.model_manager import ModelManager
 
