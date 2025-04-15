@@ -12,3 +12,11 @@ def setup_environment():
     os.environ['PATH'] = '/tools/Xilinx/Vivado/2020.1/bin:' + os.environ['PATH']
     os.environ['PATH'] = '/tools/Xilinx/Vitis_HLS/2024.2/bin:' + os.environ['PATH']
     os.environ['PATH'] = '/tools/Xilinx/Vitis/2020.1/bin:' + os.environ['PATH']
+
+
+import yaml
+import os
+
+def load_model_config(path="model_config.yaml"):
+    with open(path, "r") as f:
+        return yaml.safe_load(f)

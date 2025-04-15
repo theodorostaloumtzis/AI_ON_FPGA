@@ -1,11 +1,12 @@
 # main.py
 import argparse
-from config.config import setup_environment
+from config.config import setup_environment, load_model_config
 from data.data_pipeline import prepare_data
 from trainer.trainer import train_model, prune_mlp_model, quantize_model
 from quant.autoqkeras_utils import run_autoqkeras_tuning, process_best_autoqkeras_model
 from hls.hls_converter import evaluate_model, finalize_hls_project
 from utils.model_manager import ModelManager
+
 
 def main():
     strategy_full_help = (
@@ -24,7 +25,7 @@ def main():
     parser.add_argument("--synth", action="store_true")
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--bitstream", action="store_true")
-    parser.add_argument("--board", type=str, default="ZCU104")
+    parser.add_argument("--board", type=str, default="pynq-z2")
     parser.add_argument("--autoqk", action="store_true")
     parser.add_argument("--max-trials", type=int, default=5)
     parser.add_argument("--reuse", type=float, default=1.0)
@@ -38,7 +39,9 @@ def main():
 
     setup_environment()
     train_data, val_data, test_data = prepare_data()
-    model = ModelManager(model_type=args.model_type).build_model()
+    cfg = load_model_config(path="model_conf.yaml")
+    model_manager = ModelManager(cfg)
+    model = model_manager.build_model()   
     model = train_model(model, train_data, val_data, test_data, n_epochs=args.epochs)
 
     if not args.autoqk:

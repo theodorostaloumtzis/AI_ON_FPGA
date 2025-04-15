@@ -8,10 +8,12 @@ from tensorflow.keras.regularizers import l1
 
 
 class ModelManager:
-    def __init__(self, model_type="cnn", input_shape=(28, 28, 1), n_classes=10):
-        self.model_type = model_type.lower()
-        self.input_shape = input_shape
-        self.n_classes = n_classes
+    def __init__(self, config):
+        self.model_type = config.get("model_type", "cnn")
+        self.input_shape = tuple(config.get("input_shape", [28, 28, 1]))
+        self.n_classes = config.get("n_classes", 10)
+        self.config = config
+
 
     def build_model(self):
         if self.model_type == "cnn":
@@ -22,13 +24,14 @@ class ModelManager:
             raise ValueError(f"Unknown model type: {self.model_type}")
 
     def _build_cnn_model(self):
-        filters_per_conv_layer = [8, 8, 16]
-        neurons_per_dense_layer = [32, 42]
+        filters = self.config["cnn"]["filters_per_conv_layer"]
+        neurons = self.config["cnn"]["neurons_per_dense_layer"]
+
 
         x_in = Input(self.input_shape)
         x = x_in
 
-        for i, f in enumerate(filters_per_conv_layer):
+        for i, f in enumerate(filters):
             x = Conv2D(
                 f,
                 kernel_size=(3, 3),
@@ -44,7 +47,7 @@ class ModelManager:
 
         x = Flatten()(x)
 
-        for i, n in enumerate(neurons_per_dense_layer):
+        for i, n in enumerate(neurons):
             x = Dense(
                 n,
                 kernel_initializer='lecun_uniform',

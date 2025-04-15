@@ -1,0 +1,11 @@
+model_type: cnn
+
+input_shape: [28, 28, 1]
+n_classes: 10
+
+cnn:
+  filters_per_conv_layer: [8, 8, 16]
+  neurons_per_dense_layer: [32, 42]
+
+mlp:
+  neurons_per_layer: [128, 64]
