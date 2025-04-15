@@ -1,4 +1,13 @@
 # main.py
+from datetime import datetime
+import sys
+
+def init_run_log():
+    os.makedirs("logs", exist_ok=True)
+    log_path = os.path.join("logs", f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+    sys.stdout = open(log_path, 'w')
+    sys.stderr = sys.stdout
+    print(f"[INFO] Logging this run to {log_path}")
 
 import argparse
 from config.config import setup_environment
@@ -9,6 +18,8 @@ from hls.hls_converter import evaluate_model, finalize_hls_project
 from utils.model_manager import ModelManager
 
 def main():
+    init_run_log()
+    
     strategy_full_help = (
         "Strategy determines the hardware optimization approach used during High-Level Synthesis (HLS). "
         "It controls how the neural network is translated into digital logic, specifically balancing between latency, "
