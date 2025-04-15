@@ -49,6 +49,8 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="pynq-z2", p
 
     max_size, _ = calculate_max_hls_array_size(model)
     update_tcl_config(save_path, max(4096, max_size))
+
+    update_timeout_in_design_tcl(os.path.join(save_path, 'design.tcl'))
     return hls_model_aq, save_path
 
 def reuse_percentage_to_factors(model, percent):
@@ -122,3 +124,32 @@ def finalize_hls_project(hls_model, project_dir, do_synth=False, do_report=False
             pprint.pprint(read_vivado_report(project_dir))
     else:
         print("\nNo synthesis or bitstream build requested. Done.")
+
+def update_timeout_in_design_tcl(tcl_path, new_timeout=720):
+    """
+    Updates the timeout value in the 'wait_on_run' command inside a Vivado design Tcl script.
+
+    Args:
+        tcl_path (str): Path to the design.tcl file.
+        new_timeout (int): New timeout in minutes (0 = unlimited).
+    """
+    try:
+        with open(tcl_path, 'r') as f:
+            lines = f.readlines()
+
+        updated = False
+        with open(tcl_path, 'w') as f:
+            for line in lines:
+                if "wait_on_run" in line and "-timeout" in line:
+                    line = re.sub(r'-timeout\s+\d+', f'-timeout {new_timeout}', line)
+                    updated = True
+                f.write(line)
+
+        if updated:
+            print(f"[✓] Timeout successfully updated to {new_timeout} minutes in: {tcl_path}")
+        else:
+            print(f"[!] No timeout line found in {tcl_path}. Nothing changed.")
+
+    except Exception as e:
+        print(f"[✗] Failed to update timeout: {e}")
+
