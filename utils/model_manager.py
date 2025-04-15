@@ -23,7 +23,7 @@ class ModelManager:
 
     def _build_cnn_model(self):
         filters_per_conv_layer = [8, 8, 16]
-        neurons_per_dense_layer = [42, 64]
+        neurons_per_dense_layer = [32, 42]
 
         x_in = Input(self.input_shape)
         x = x_in
