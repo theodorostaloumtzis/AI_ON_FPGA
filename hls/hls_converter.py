@@ -23,7 +23,7 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="pynq-z2", p
     backend = "VivadoAccelerator" if do_bitstream else "Vitis"
 
     hls_config_aq = hls4ml.utils.config_from_keras_model(model, granularity='name')
-    hls_config_aq['Model']['Precision'] = 'ap_fixed<16,6>'
+    hls_config_aq['Model']['Precision'] = 'ap_fixed<12,6>'
     hls_config_aq['Model']['Strategy'] = strat
     hls_config_aq['LayerName']['output_softmax'] = {'Strategy': 'Stable'}
 
