@@ -26,6 +26,7 @@ def main():
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--bitstream", action="store_true")
     parser.add_argument("--board", type=str, default="pynq-z2")
+    parser.add_argument("--part", type=str, default="xc7z020clg400-1", help="FPGA part name for synthesis (e.g., xc7z020clg400-1).")
     parser.add_argument("--autoqk", action="store_true")
     parser.add_argument("--max-trials", type=int, default=5)
     parser.add_argument("--reuse", type=float, default=1.0)
@@ -65,7 +66,15 @@ def main():
             autoqk = run_autoqkeras_tuning(model, train_data, val_data, n_epochs=args.epochs, max_trials=args.max_trials, model_type=args.model_type)
             model = process_best_autoqkeras_model(autoqk.get_best_model(), train_data, val_data, test_data, args.epochs, args.model_type)
 
-    hls_model, hls_path = evaluate_model(model, test_data, do_bitstream=args.bitstream, board_name=args.board, reuse=args.reuse, strat=args.strat)
+    hls_model, hls_path = evaluate_model(
+        model,
+        test_data,
+        do_bitstream=args.bitstream,
+        board_name=args.board,
+        part=args.part,
+        reuse=args.reuse,
+        strat=args.strat
+    )
     finalize_hls_project(hls_model, hls_path, do_synth=args.synth, do_report=args.report, do_bitstream=args.bitstream)
 
 if __name__ == "__main__":
