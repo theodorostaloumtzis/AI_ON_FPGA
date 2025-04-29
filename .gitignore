@@ -1,6 +1,7 @@
 /.venv
 /__pycache__
-/autoqk_results
-/model_1
+/autoqk_results_*
+/logs
 /Projects
 /models
+/autoqk_results
