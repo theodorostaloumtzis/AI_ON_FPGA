@@ -70,9 +70,7 @@ def main():
     if not loaded_model:
         model = train_model(model, train_data, val_data, test_data, n_epochs=args.epochs)
     else:
-        print("
-✓ Loaded model is pre-trained; skipping training.
-")
+        print(" Loaded model is pre-trained; skipping training.")
 
     if not loaded_model:
         if not args.autoqk:
