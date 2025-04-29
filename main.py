@@ -1,6 +1,7 @@
 # main.py
 import argparse
 import tensorflow as tf
+from qkeras import QConv2D, QDense, QActivation, QBatchNormalization
 from config.config import setup_environment, load_model_config
 from data.data_pipeline import prepare_data
 from trainer.trainer import train_model
@@ -47,7 +48,13 @@ def main():
 
     if args.model_path:
         print(f"\n--- Loading model from {args.model_path} ---\n")
-        model = tf.keras.models.load_model(args.model_path, compile=False)
+        custom_objects = {
+            "QConv2D": QConv2D,
+            "QDense": QDense,
+            "QActivation": QActivation,
+            "QBatchNormalization": QBatchNormalization
+        }
+        model = tf.keras.models.load_model(args.model_path, compile=False, custom_objects=custom_objects)
         loaded_model = True
     else:
         cfg = load_model_config(path="model_conf.yaml")
