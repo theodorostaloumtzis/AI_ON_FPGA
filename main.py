@@ -1,7 +1,7 @@
 # main.py
 import argparse
 import tensorflow as tf
-from qkeras import QConv2D, QDense, QActivation, QBatchNormalization
+from qkeras import QConv2D, QDense, QActivation, QBatchNormalization, quantized_bits
 from config.config import setup_environment, load_model_config
 from data.data_pipeline import prepare_data
 from trainer.trainer import train_model
@@ -52,7 +52,8 @@ def main():
             "QConv2D": QConv2D,
             "QDense": QDense,
             "QActivation": QActivation,
-            "QBatchNormalization": QBatchNormalization
+            "QBatchNormalization": QBatchNormalization,
+            "quantized_bits": quantized_bits
         }
         model = tf.keras.models.load_model(args.model_path, compile=False, custom_objects=custom_objects)
         loaded_model = True
