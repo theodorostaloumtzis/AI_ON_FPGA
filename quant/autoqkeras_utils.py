@@ -3,6 +3,7 @@ import time
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from qkeras.autoqkeras import AutoQKeras
+import os
 
 def run_autoqkeras_tuning(model, train_data, val_data, n_epochs=10, max_trials=5, model_type="cnn"):
     quantization_config = {
@@ -86,36 +87,42 @@ def get_autoqkeras_limits(model):
 
 def process_best_autoqkeras_model(best_model, train_data, val_data, test_data, n_epochs, model_type="cnn"):
     print("\n--- Processing Best AutoQKeras Model ---\n")
+
+    # Recompile the best model
+    best_model.compile(
+        loss=tf.keras.losses.CategoricalCrossentropy(),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=3e-3),
+        metrics=["accuracy"]
+    )
+
     callbacks = [
         tf.keras.callbacks.EarlyStopping(patience=10, verbose=1),
         tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1),
     ]
 
+    # Retrain (fine-tune) the best model
     start = time.time()
     best_model.fit(train_data, epochs=n_epochs, validation_data=val_data, callbacks=callbacks, verbose=1)
     end = time.time()
     print(f'\nTraining completed in {(end - start) / 60.0:.2f} minutes\n')
 
-    weight_file = f"autoqkeras_{model_type}_weights.h5"
-    best_model.save_weights(weight_file)
+    # Save the retrained best model for HLS4ML
+    os.makedirs("models", exist_ok=True)
+    save_path = os.path.join("models", f"autoqkeras_best_{model_type}.h5")
+    best_model.save(save_path)
+    print(f"\nSaved AutoQKeras retrained model to: {save_path}\n")
 
-    layers = [l for l in best_model.layers]
-    x = layers[0].output
-    for i in range(1, len(layers)):
-        x = layers[i](x)
+    # Clean up search artifacts
+    if os.path.exists("autoqk_results"):
+        import shutil
+        shutil.rmtree("autoqk_results")
+        print("[Cleanup] Removed autoqk_results folder.")
 
-    new_model = Model(inputs=[layers[0].input], outputs=[x])
-    new_model.compile(
-        loss=tf.keras.losses.CategoricalCrossentropy(),
-        optimizer=tf.keras.optimizers.Adam(learning_rate=3e-3),
-        metrics=["accuracy"]
-    )
-    new_model.load_weights(weight_file)
-
-    results = new_model.evaluate(test_data, verbose=2)
-    metrics = dict(zip(new_model.metrics_names, results))
+    # Evaluate
+    results = best_model.evaluate(test_data, verbose=2)
+    metrics = dict(zip(best_model.metrics_names, results))
     print("\nAutoQKeras best model test metrics:")
     for k, v in metrics.items():
         print(f"  {k}: {v:.4f}")
 
-    return new_model
+    return best_model
