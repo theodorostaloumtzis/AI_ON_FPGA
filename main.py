@@ -56,13 +56,23 @@ def main():
             "quantized_bits": quantized_bits
         }
         model = tf.keras.models.load_model(args.model_path, compile=False, custom_objects=custom_objects)
+        model.compile(
+            loss=tf.keras.losses.CategoricalCrossentropy(),
+            optimizer=tf.keras.optimizers.Adam(learning_rate=3e-3),
+            metrics=["accuracy"]
+        )
         loaded_model = True
     else:
         cfg = load_model_config(path="model_conf.yaml")
         model_manager = ModelManager(cfg)
         model = model_manager.build_model()
 
-    model = train_model(model, train_data, val_data, test_data, n_epochs=args.epochs)
+    if not loaded_model:
+        model = train_model(model, train_data, val_data, test_data, n_epochs=args.epochs)
+    else:
+        print("
+✓ Loaded model is pre-trained; skipping training.
+")
 
     if not loaded_model:
         if not args.autoqk:
