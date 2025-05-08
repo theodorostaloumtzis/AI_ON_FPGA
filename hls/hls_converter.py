@@ -112,7 +112,7 @@ def calculate_max_hls_array_size(model: Model):
 def finalize_hls_project(hls_model, project_dir, do_synth=False, do_report=False, do_bitstream=False):
     if do_synth:
         print("\n--- Running HLS Synthesis build (Vivado HLS) ---\n")
-        hls_model.build(csim=False, synth=True, vsynth=True)
+        hls_model.build(csim=False, synth=True, vsynth=True, export=True)
         if do_report:
             print("\n--- Reading Vivado Report (Synthesis) ---\n")
             pprint.pprint(read_vivado_report(project_dir))
