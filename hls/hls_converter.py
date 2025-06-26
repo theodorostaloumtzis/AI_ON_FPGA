@@ -26,6 +26,7 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="pynq-z2", p
     hls_config_aq['Model']['Precision'] = 'ap_fixed<12,6>'
     hls_config_aq['Model']['Strategy'] = strat
     hls_config_aq['LayerName']['output_softmax'] = {'Strategy': 'Stable'}
+    hls_config_aq['Model']['ClockPeriod'] = 10.001   # 1 / 99.999001 MHz  (ns)
 
     per_layer_reuse = reuse_percentage_to_factors(model, reuse)
     for layer, val in per_layer_reuse.items():
@@ -48,7 +49,7 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="pynq-z2", p
     print("hls4ml model compilation complete.")
 
     max_size, _ = calculate_max_hls_array_size(model)
-    update_tcl_config(save_path, max(4096, max_size))
+    update_tcl_config(save_path, max(4096, max_size), part=part)
 
     update_timeout_in_design_tcl(os.path.join(save_path, 'design.tcl'))
     return hls_model_aq, save_path
