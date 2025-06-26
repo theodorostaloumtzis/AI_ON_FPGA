@@ -49,7 +49,7 @@ def evaluate_model(model, test_data, do_bitstream=False, board_name="pynq-z2", p
     print("hls4ml model compilation complete.")
 
     max_size, _ = calculate_max_hls_array_size(model)
-    update_tcl_config(save_path, max(4096, max_size), part=part)
+    update_tcl_config(save_path, max(4096, max_size), default_part=part)
 
     update_timeout_in_design_tcl(os.path.join(save_path, 'design.tcl'))
     return hls_model_aq, save_path
