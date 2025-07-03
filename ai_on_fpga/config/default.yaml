@@ -1,0 +1,29 @@
+# ai_on_fpga/config/default.yaml
+tools:                       # ← tell the pipeline where Xilinx lives
+  vivado: /opt/Xilinx/Vivado/2023.2
+  vitis:  /opt/Xilinx/Vitis/2023.2     # omit if you’re using Vivado only
+
+data:
+  batch: 128
+
+model:
+  type:   cnn                 # cnn | mlp
+  hidden: 128
+
+train:
+  epochs: 1
+  lr:     0.001
+
+quantize:
+  enabled: false              # flip to true when you wire in QKeras
+
+hls:
+  backend:  Vitis             # Vitis | Vivado
+  clock:    5                 # ns
+  reuse:    1
+  strategy: Latency
+
+impl:
+  synth:     true             # run C-synth
+  export:    true             # create IP (.xo / IP-XACT)
+  bitstream: false            # keep false for “IP-only” flow

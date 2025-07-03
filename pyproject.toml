@@ -1,0 +1,25 @@
+[project]
+name = "ai-on-fpga"
+version = "0.1.0"
+description = "Train, quantise and compile tiny neural nets to Xilinx FPGAs using hls4ml"
+authors     = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.9"
+readme = "README.md"
+
+[project.dependencies]
+tensorflow = "~=2.14"
+typer      = "^0.12"
+PyYAML     = "^6.0"
+# optional – uncomment when you wire them in
+# hls4ml = "~=1.1"
+# qkeras = "~=0.9"
+
+[project.optional-dependencies]
+dev = ["black", "ruff", "pytest"]
+
+[project.scripts]
+aionfpga = "ai_on_fpga.cli:app"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
