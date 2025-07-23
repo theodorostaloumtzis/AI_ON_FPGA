@@ -141,6 +141,7 @@ def plot_history(histry: dict, metrics=('loss', 'val_loss'), ylabel='Loss', logy
     ax.set_ylabel(ylabel)
     if logy:
         ax.set_yscale('log')
+    ax.grid()
     ax.legend()
     return fig, ax
 

@@ -14,7 +14,8 @@ class TemplateInjector:
         self.static_files = [
             "build_tb.py",
             "compute_performance.py",
-            "build_prj.tcl"
+            "build_prj.tcl",
+            "golden_preds.py"
         ]
 
     def inject(self, project_dir, project_name, force=False, confirm_fn=None):

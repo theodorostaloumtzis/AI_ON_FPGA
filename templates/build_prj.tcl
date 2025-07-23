@@ -124,9 +124,9 @@ set RTL_COSIM_RESULTS    ./tb_data/rtl_cosim_results.log
 
 if {$opt(reset)} { open_project -reset ${project_name}_prj } else { open_project ${project_name}_prj }
 set_top ${project_name}_stream
-add_files firmware/${project_name}_stream.cpp -cflags "-std=c++0x"
-add_files firmware/${project_name}.cpp -cflags "-std=c++0x"
-add_files -tb ${project_name}_test.cpp    -cflags "-std=c++0x"
+add_files firmware/${project_name}_stream.cpp -cflags "-std=c++14"
+add_files firmware/${project_name}.cpp -cflags "-std=c++14"
+add_files -tb ${project_name}_test.cpp    -cflags "-std=c++14"
 add_files -tb firmware/weights
 add_files -tb tb_data
 if {$opt(reset)} { open_solution -reset solution1 } else { open_solution solution1 }
@@ -166,7 +166,7 @@ if {$opt(synth)} {
 # ----------------------------- CO-SIMULATION -------------------------------
 if {$opt(cosim)} {
     puts "***** C/RTL SIMULATION *****"
-    add_files -tb ${project_name}_test.cpp -cflags "-std=c++0x -DRTL_SIM"
+    add_files -tb ${project_name}_test.cpp -cflags "-std=c++14 -DRTL_SIM"
     set time_start [clock clicks -milliseconds]
     cosim_design -trace_level all -setup
     if {$opt(fifo_opt)} {
