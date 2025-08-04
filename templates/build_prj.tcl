@@ -19,7 +19,7 @@ array set opt {
     synth      1
     cosim      1
     validation 1
-    export     1
+    export     0
     vsynth     0
     fifo_opt   0
 }
