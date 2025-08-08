@@ -24,8 +24,8 @@ void {{ project_name }}_stream(
     // Internal FIFOs with CNN‑native datatypes ------------------------------
     hls::stream<input_t>  img_fifo("img_fifo");
     hls::stream<result_t> res_fifo("res_fifo");
-#pragma HLS STREAM variable=img_fifo depth=784
-#pragma HLS STREAM variable=res_fifo depth=32
+#pragma HLS STREAM variable=img_fifo depth=N_INPUT
+#pragma HLS STREAM variable=res_fifo depth=N_OUTPUT
 
     // 1. Ingest pixels -------------------------------------------------------
     PIXEL_LOOP: for (unsigned i = 0; i < NPIX; ++i) {

@@ -20,7 +20,7 @@ void {{ project_name }}_stream(
     hls::stream<input_t>  img_fifo("img_fifo");
     hls::stream<result_t> res_fifo("res_fifo");
 #pragma HLS STREAM variable=img_fifo depth=N_INPUT  // can hold all 784 pixels
-#pragma HLS STREAM variable=res_fifo depth=32
+#pragma HLS STREAM variable=res_fifo depth=N_OUTPUT
 
     // 1. Ingest N_PKT × 64-bit words, unpack 4 pixels each ---------------
     PIXEL_LOOP: for (unsigned pkt = 0; pkt < N_PKT; ++pkt) {
