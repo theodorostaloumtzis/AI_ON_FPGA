@@ -14,7 +14,8 @@ class TemplateInjector:
             "build_tb.py",
             "compute_performance.py",
             "build_prj.tcl",
-            "golden_preds.py"
+            "golden_preds.py",
+            "vivado_synth.tcl",
         ]
 
     def inject(self, project_dir, project_name, force=False, confirm_fn=None, packed=False):

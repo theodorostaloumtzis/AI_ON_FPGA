@@ -11,6 +11,9 @@
 #      before calling `set_clock_uncertainty`.
 #    • robust cosim-report lookup that works with both legacy (<2024.1)
 #      and current (2024.1+) file names.
+#    • solution-aware helper procs (no hard-coded 'solution1' paths).
+#    • stable co-sim in separate solution (sol_cosim) using a side AXIS
+#      perf-channel (macro: USE_AXIS_PERF) to avoid scalar I/O with ap_ctrl_none.
 # -----------------------------------------------------------------------------
 
 array set opt {
@@ -19,8 +22,8 @@ array set opt {
     synth      1
     cosim      1
     validation 1
-    export     0
-    vsynth     0
+    export     1
+    vsynth     1
     fifo_opt   0
 }
 
@@ -28,51 +31,116 @@ set tcldir [file dirname [info script]]
 source [file join $tcldir project.tcl]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Helper procs (unchanged apart from minor clean-ups)
+# Helper procs (solution-aware & robust)
 # ─────────────────────────────────────────────────────────────────────────────
 
-proc remove_recursive_log_wave {} {
-    set tcldir [file dirname [info script]]
-    source [file join $tcldir project.tcl]
-    set filename ${project_name}_prj/solution1/sim/verilog/${project_name}_stream.tcl
-    set timestamp [clock format [clock seconds] -format {%Y%m%d%H%M%S}]
-    set temp     $filename.new.$timestamp
-
-    set in  [open $filename r]
-    set out [open $temp     w]
-    while {[gets $in line] != -1} {
-        if {[string equal "$line" "log_wave -r /"]} { set line { } }
-        puts $out $line
+# Return a likely sim/verilog TCL file to patch (wave logging script)
+proc _find_sim_wave_tcl {} {
+    global project_name
+    # Try current solution name, otherwise fall back
+    set sol_name ""
+    catch { set sol_name [get_property name [current_solution]] }
+    if {$sol_name eq ""} {
+        foreach s {sol_cosim solution1} {
+            if {[file isdirectory "${project_name}_prj/$s/sim/verilog"]} {
+                set sol_name $s
+                break
+            }
+        }
+        if {$sol_name eq ""} { return "" }
     }
-    close $in
-    close $out
-    file delete -force $filename
-    file rename -force $temp $filename
+    set simdir "${project_name}_prj/${sol_name}/sim/verilog"
+    if {![file isdirectory $simdir]} { return "" }
+
+    set candidates {}
+    foreach fname [list \
+        "${project_name}_stream.tcl" \
+        "${project_name}_axi.tcl" \
+        "${project_name}.tcl" \
+    ] {
+        set f [file join $simdir $fname]
+        if {[file exists $f]} { lappend candidates $f }
+    }
+    if {[llength $candidates] == 0} {
+        foreach f [glob -nocomplain -directory $simdir *.tcl] {
+            lappend candidates $f
+        }
+    }
+    if {[llength $candidates] == 0} { return "" }
+
+    # Prefer a script containing "log_wave -r /"
+    foreach f $candidates {
+        if {[catch { set fh [open $f r] }]} { continue }
+        set content [read $fh]; close $fh
+        if {[string first "log_wave -r /" $content] >= 0} { return $f }
+    }
+    return [lindex $candidates 0]
 }
 
-proc add_vcd_instructions_tcl {} {
-    set tcldir [file dirname [info script]]
-    source [file join $tcldir project.tcl]
-    set filename ${project_name}_prj/solution1/sim/verilog/${project_name}_stream.tcl
+# Remove the heavy "log_wave -r /" line if present
+proc remove_recursive_log_wave {} {
+    set filename [_find_sim_wave_tcl]
+    if {$filename eq ""} {
+        puts "INFO: remove_recursive_log_wave: no sim wave tcl found — skipping"
+        return
+    }
     set timestamp [clock format [clock seconds] -format {%Y%m%d%H%M%S}]
-    set temp     $filename.new.$timestamp
+    set temp "${filename}.new.$timestamp"
 
-    set in  [open $filename r]
-    set out [open $temp     w]
+    if {[catch { set in  [open $filename r] } err]} {
+        puts "INFO: remove_recursive_log_wave: $err — skipping"
+        return
+    }
+    if {[catch { set out [open $temp     w] } err]} {
+        close $in
+        puts "INFO: remove_recursive_log_wave: $err — skipping"
+        return
+    }
 
     while {[gets $in line] != -1} {
-        if {[string equal "$line" "log_wave -r /"]} {
-            set line {source "../../../../project.tcl"
+        if {[string equal $line "log_wave -r /"]} { set line { } }
+        puts $out $line
+    }
+    close $in; close $out
+    catch { file delete -force $filename }
+    catch { file rename -force $temp $filename }
+    puts "INFO: remove_recursive_log_wave: cleaned $filename"
+}
+
+# Inject VCD logging in FIFO scopes if the sim wave TCL is found
+proc add_vcd_instructions_tcl {} {
+    global project_name backend
+    set filename [_find_sim_wave_tcl]
+    if {$filename eq ""} {
+        puts "INFO: add_vcd_instructions_tcl: no sim wave tcl found — skipping"
+        return
+    }
+    set timestamp [clock format [clock seconds] -format {%Y%m%d%H%M%S}]
+    set temp "${filename}.new.$timestamp"
+
+    if {[catch { set in  [open $filename r] } err]} {
+        puts "INFO: add_vcd_instructions_tcl: $err — skipping"
+        return
+    }
+    if {[catch { set out [open $temp     w] } err]} {
+        close $in
+        puts "INFO: add_vcd_instructions_tcl: $err — skipping"
+        return
+    }
+
+    while {[gets $in line] != -1} {
+        if {[string equal $line "log_wave -r /"]} {
+            set line [format {source "../../../../project.tcl"
                 if {[string equal "$backend" "vivadoaccelerator"]} {
-                    current_scope [get_scopes -regex "/apatb_${project_name}_axi_top/AESL_inst_${project_name}_axi/${project_name}_U0.*"]
+                    current_scope [get_scopes -regex "/apatb_%s_axi_top/AESL_inst_%s_axi/%s_U0.*"]
                     set scopes [get_scopes -regexp {layer(\d*)_.*data_0_V_U.*}]
                     append scopes { }
-                    current_scope "/apatb_${project_name}_axi_top/AESL_inst_${project_name}_axi"
+                    current_scope "/apatb_%s_axi_top/AESL_inst_%s_axi"
                     append scopes [get_scopes -regexp {(in_local_V_data.*_0_.*)}]
                     append scopes { }
                     append scopes [get_scopes -regexp {(out_local_V_data.*_0_.*)}]
                 } else {
-                    current_scope [get_scopes -regex "/apatb_${project_name}_top/AESL_inst_${project_name}"]
+                    current_scope [get_scopes -regex "/apatb_%s_top/AESL_inst_%s"]
                     set scopes [get_scopes -regexp {layer(\d*)_.*data_0_V_U.*}]
                 }
                 open_vcd fifo_opt.vcd
@@ -83,27 +151,27 @@ proc add_vcd_instructions_tcl {} {
                     set depth [get_objects DEPTH]
                     add_wave $usedw; log_vcd $usedw; log_wave $usedw
                     add_wave $depth; log_vcd $depth; log_wave $depth
-                }
-            }
+                }} $project_name $project_name $project_name \
+                   $project_name $project_name \
+                   $project_name $project_name]
         }
-        if {[string equal "$line" "quit"]} {
+        if {[string equal $line "quit"]} {
             set line {flush_vcd; close_vcd; quit}
         }
         puts $out $line
     }
-    close $in
-    close $out
-    file delete -force $filename
-    file rename -force $temp $filename
+    close $in; close $out
+    catch { file delete -force $filename }
+    catch { file rename -force $temp $filename }
+    puts "INFO: add_vcd_instructions_tcl: patched $filename"
 }
 
-# Remaining helper procs (compare_files, report_time) unchanged …
 proc report_time { op_name time_start time_end } {
-    set time_taken [expr $time_end - $time_start]
+    set time_taken [expr {$time_end - $time_start}]
     puts [format "***** %s COMPLETED IN %02dh%02dm%02ds *****" $op_name \
-        [expr ($time_taken / (1000*60*60)) % 24] \
-        [expr ($time_taken / (1000*60)) % 60] \
-        [expr ($time_taken / 1000) % 60]]
+        [expr {($time_taken / (1000*60*60)) % 24}] \
+        [expr {($time_taken / (1000*60)) % 60}] \
+        [expr {($time_taken / 1000) % 60}]]
 }
 
 proc compare_files {file_1 file_2} {
@@ -119,14 +187,14 @@ proc compare_files {file_1 file_2} {
 # ─────────────────────────────────────────────────────────────────────────────
 
 file mkdir tb_data
-set CSIM_RESULTS        ./tb_data/csim_results.log
+set CSIM_RESULTS         ./tb_data/csim_results.log
 set RTL_COSIM_RESULTS    ./tb_data/rtl_cosim_results.log
 
 if {$opt(reset)} { open_project -reset ${project_name}_prj } else { open_project ${project_name}_prj }
 set_top ${project_name}_stream
 add_files firmware/${project_name}_stream.cpp -cflags "-std=c++14"
-add_files firmware/${project_name}.cpp -cflags "-std=c++14"
-add_files -tb ${project_name}_test.cpp    -cflags "-std=c++14"
+add_files firmware/${project_name}.cpp        -cflags "-std=c++14"
+add_files -tb ${project_name}_test.cpp        -cflags "-std=c++14"
 add_files -tb firmware/weights
 add_files -tb tb_data
 if {$opt(reset)} { open_solution -reset solution1 } else { open_solution solution1 }
@@ -166,24 +234,62 @@ if {$opt(synth)} {
 # ----------------------------- CO-SIMULATION -------------------------------
 if {$opt(cosim)} {
     puts "***** C/RTL SIMULATION *****"
-    add_files -tb ${project_name}_test.cpp -cflags "-std=c++14 -DRTL_SIM"
+
+    # Separate solution for stable co-sim with side-channel AXIS
+    open_solution -reset sol_cosim
+    set_part xck26-sfvc784-2LV-c
+    create_clock -period 5 -name default
+
+    # (1) Re-add ALL design sources with USE_AXIS_PERF
+    set design_srcs [glob -nocomplain "firmware/*.cpp"]
+    if {[llength $design_srcs] == 0} {
+        error "No design sources found under firmware/*.cpp"
+    }
+    add_files -cflags "-std=c++14 -DUSE_AXIS_PERF" $design_srcs
+
+    # (2) Testbench with RTL_SIM + USE_AXIS_PERF (logs unchanged)
+    add_files -tb ${project_name}_test.cpp -cflags "-std=c++14 -DRTL_SIM -DUSE_AXIS_PERF"
+
+    set_top ${project_name}_stream
+
+    # (3) Synthesize (I/O changes due to m_axis_perf)
+    csynth_design
+
+    # (4) Co-sim
     set time_start [clock clicks -milliseconds]
     cosim_design -trace_level all -setup
+
     if {$opt(fifo_opt)} {
         puts "[hls4ml] - FIFO optimization started"
         if {[string equal "$backend" "vivado"] || [string equal $backend "vivadoaccelerator"]} { add_vcd_instructions_tcl }
     }
+    # Safe cleanup (no error if file not found)
     remove_recursive_log_wave
-    set old_pwd [pwd]; cd ${project_name}_prj/solution1/sim/verilog/; source run_sim.tcl; cd $old_pwd
 
-    # --- lookup report robustly ------------------------------------------------
-    set rpt_candidates {
-        ${project_name}_prj/solution1/sim/report/${project_name}_cosim.rpt
-        ${project_name}_prj/solution1/sim/report/${project_name}_axi_cosim.rpt
-        ${project_name}_prj/solution1/${project_name}_cosim.rpt
-        ${project_name}_prj/solution1/${project_name}_axi_cosim.rpt
+    # Run simulator script if present
+    set simdir "${project_name}_prj/sol_cosim/sim/verilog"
+    if {[file isdirectory $simdir]} {
+        set old_pwd [pwd]
+        cd $simdir
+        if {[file exists "run_sim.tcl"]} {
+            source run_sim.tcl
+        } else {
+            puts "WARNING: run_sim.tcl not found in $simdir; skipping manual run"
+        }
+        cd $old_pwd
+    } else {
+        puts "WARNING: sim dir not found: $simdir (skipping manual run_sim.tcl)"
     }
-    set rpt_file ""; foreach f $rpt_candidates { if {[file exists $f]} { set rpt_file $f; break } }
+
+    # --- report lookup (adapted for sol_cosim) -----------------------------
+    set rpt_candidates {
+        ${project_name}_prj/sol_cosim/sim/report/${project_name}_cosim.rpt
+        ${project_name}_prj/sol_cosim/sim/report/${project_name}_axi_cosim.rpt
+        ${project_name}_prj/sol_cosim/${project_name}_cosim.rpt
+        ${project_name}_prj/sol_cosim/${project_name}_axi_cosim.rpt
+    }
+    set rpt_file ""
+    foreach f $rpt_candidates { if {[file exists $f]} { set rpt_file $f; break } }
     if {$rpt_file ne ""} {
         puts [read [open $rpt_file r]]
     } else {
@@ -213,7 +319,7 @@ if {$opt(export)} {
 # ----------------------------- VIVADO SYNTH -------------------------------
 if {$opt(vsynth)} {
     puts "***** VIVADO SYNTHESIS *****"
-    if {[file exist ${project_name}_prj/solution1/syn/verilog]} {
+    if {[file exists ${project_name}_prj/solution1/syn/verilog]} {
         set time_start [clock clicks -milliseconds]
         exec vivado -mode batch -source vivado_synth.tcl >@ stdout
         report_time "VIVADO SYNTHESIS" $time_start [clock clicks -milliseconds]
