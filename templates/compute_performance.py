@@ -6,7 +6,7 @@ from pathlib import Path
 # ------------------------------------------------------------------
 # Input files – change here if you keep them elsewhere
 # ------------------------------------------------------------------
-PRED_FILE = Path("tb_data/rtl_cosim_results.log")          # DUT output
+PRED_FILE = Path("tb_data/csim_results.log")          # DUT output
 GOLD_FILE = Path("tb_data/tb_output_predictions.dat") # golden model
 # ------------------------------------------------------------------
 

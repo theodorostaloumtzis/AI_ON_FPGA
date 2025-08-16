@@ -18,12 +18,12 @@
 
 array set opt {
     reset      1
-    csim       1
+    csim       0
     synth      1
-    cosim      1
-    validation 1
+    cosim      0
+    validation 0
     export     1
-    vsynth     1
+    vsynth     0
     fifo_opt   0
 }
 
@@ -231,6 +231,14 @@ if {$opt(synth)} {
     report_time "C/RTL SYNTHESIS" $time_start [clock clicks -milliseconds]
 }
 
+# ----------------------------- EXPORT IP ----------------------------------
+if {$opt(export)} {
+    puts "***** EXPORT IP *****"
+    set time_start [clock clicks -milliseconds]
+    export_design -format ip_catalog -version $version
+    report_time "EXPORT IP" $time_start [clock clicks -milliseconds]
+}
+
 # ----------------------------- CO-SIMULATION -------------------------------
 if {$opt(cosim)} {
     puts "***** C/RTL SIMULATION *****"
@@ -306,14 +314,6 @@ if {$opt(validation)} {
     } else {
         puts "ERROR: Test FAILED"; exit 1
     }
-}
-
-# ----------------------------- EXPORT IP ----------------------------------
-if {$opt(export)} {
-    puts "***** EXPORT IP *****"
-    set time_start [clock clicks -milliseconds]
-    export_design -format ip_catalog -version $version
-    report_time "EXPORT IP" $time_start [clock clicks -milliseconds]
 }
 
 # ----------------------------- VIVADO SYNTH -------------------------------

@@ -1,13 +1,18 @@
 #include "{{ project_name }}_stream.h"   // axis64_t + axis16_t + top prototype
+#include <cassert>
 
-#define N_INPUT    784   // 28×28
-#define N_OUTPUT     10
-#define PACK_SIZE     4  // pixels per 64-bit beat
+#define N_INPUT     784   // 28×28
+#define N_OUTPUT      10
+#define PACK_SIZE      4   // pixels per 64-bit beat
 #define N_PKT   (N_INPUT / PACK_SIZE)
 
 #ifndef START_ON_LAST_IN
-#define START_ON_LAST_IN  1   // 1: start on input TLAST, 0: start on first beat
+// 0 → start on first input beat (includes input stalls)
+// 1 → start on input TLAST (excludes input path)
+#define START_ON_LAST_IN  0
 #endif
+
+static_assert((N_INPUT % PACK_SIZE) == 0, "N_INPUT must be divisible by PACK_SIZE");
 
 // ───────────────────────── Stages for DATAFLOW ──────────────────────────────
 static void ingest_pixels(hls::stream<axis64_t>   &s_axis,
@@ -18,7 +23,7 @@ static void ingest_pixels(hls::stream<axis64_t>   &s_axis,
 READ_PKTS:
     for (unsigned pkt = 0; pkt < N_PKT; ++pkt) {
 #pragma HLS PIPELINE II=1
-        axis64_t aw = s_axis.read();
+        axis64_t aw = s_axis.read();   // blocks on TVALID∧TREADY
 
         // One start event per frame
         if (START_ON_LAST_IN) {
@@ -38,14 +43,30 @@ READ_PKTS:
     }
 }
 
+// Emit 'done_core' exactly when logits become readable downstream.
+// This timestamps first availability (not when core function returns).
+static void forward_and_mark(hls::stream<result_t>   &core_out,
+                             hls::stream<result_t>   &res_fifo,
+                             hls::stream<ap_uint<1>> &done_core_evt_s)
+{
+#pragma HLS INLINE off
+    result_t logits = core_out.read(); // blocks until logits exist
+    done_core_evt_s.write(1);          // core done at first readability
+    res_fifo.write(logits);            // forward to egress
+}
+
 static void run_core(hls::stream<input_t>     &img_fifo,
                      hls::stream<result_t>    &res_fifo,
                      hls::stream<ap_uint<1>>  &done_core_evt_s)
 {
 #pragma HLS INLINE off
-    {{ project_name }}(img_fifo, res_fifo);
-    // Signal core-only completion (result is ready)
-    done_core_evt_s.write(1);
+    // Decouple core from downstream to mark "first read" precisely
+    hls::stream<result_t> core_out("core_out");
+#pragma HLS STREAM variable=core_out depth=2
+
+#pragma HLS DATAFLOW
+    {{ project_name }}(img_fifo, core_out);
+    forward_and_mark(core_out, res_fifo, done_core_evt_s);
 }
 
 static void egress_logits(hls::stream<result_t>    &res_fifo,
@@ -62,16 +83,18 @@ WRITE_LOGITS:
         ow.data = logits[c].range(15,0);
         ow.keep = 0x3;                       // 2 bytes valid
         ow.last = (c == N_OUTPUT - 1);
-        m_axis.write(ow);
+        m_axis.write(ow);                     // blocks on TREADY
 
         if (ow.last) {
-            // End-to-end completion on last output handshake
+            // End-to-end completion on last output handshake (includes S2MM stalls)
             done_e2e_evt_s.write(1);
         }
     }
 }
 
-// Single-shot dual counter: counts cycles from start event to core/e2e done
+// ----------------- Παράλληλος μετρητής κύκλων (single-shot) -----------------
+// Περιμένει 1 start, αδειάζει τυχόν "μπαγιάτικα" done, και μετράει μέχρι να
+// λάβει done_core ΚΑΙ done_e2e. Έλεγχος για done ΠΡΙΝ το increase.
 static void cycle_counter_proc(hls::stream<ap_uint<1>> &start_evt_s,
                                hls::stream<ap_uint<1>> &done_core_evt_s,
                                hls::stream<ap_uint<1>> &done_e2e_evt_s,
@@ -79,18 +102,28 @@ static void cycle_counter_proc(hls::stream<ap_uint<1>> &start_evt_s,
                                ap_uint<32> &cycles_e2e_out)
 {
 #pragma HLS INLINE off
-    ap_uint<1> dummy;
-    start_evt_s.read(dummy);   // block for the frame start
+#pragma HLS INTERFACE ap_none port=cycles_core_out
+#pragma HLS INTERFACE ap_none port=cycles_e2e_out
 
+    // 1) Περιμένουμε 1 start (blocking read — ασφαλές: το ingest το γράφει πάντα)
+    ap_uint<1> dummy;
+    start_evt_s.read(dummy);
+
+    // 2) Άδειασε τυχόν παλιά done pulses (από προηγούμενο frame)
+FLUSH_CORE:
+    while (!done_core_evt_s.empty())  { (void)done_core_evt_s.read(); }
+FLUSH_E2E:
+    while (!done_e2e_evt_s.empty())   { (void)done_e2e_evt_s.read(); }
+
+    // 3) Τρέξε μετρητές μέχρι να έρθουν και τα δύο done
     ap_uint<32> cnt_core = 0, cnt_e2e = 0;
     bool run_core = true, run_e2e = true;
 
 COUNT_LOOP:
     while (run_core || run_e2e) {
 #pragma HLS PIPELINE II=1
-        if (run_core) cnt_core++;
-        if (run_e2e)  cnt_e2e++;
 
+        // Έλεγχος ολοκλήρωσης ΠΡΙΝ από την αύξηση
         if (run_core && !done_core_evt_s.empty()) {
             (void)done_core_evt_s.read();
             run_core = false;
@@ -99,8 +132,12 @@ COUNT_LOOP:
             (void)done_e2e_evt_s.read();
             run_e2e = false;
         }
+
+        if (run_core) cnt_core++;
+        if (run_e2e)  cnt_e2e++;
     }
 
+    // 4) Λάτσαρε στα outputs (κρατούνται μέχρι την επόμενη κλήση)
     cycles_core_out = cnt_core;
     cycles_e2e_out  = cnt_e2e;
 }
@@ -109,27 +146,19 @@ COUNT_LOOP:
 void {{ project_name }}_stream(
     hls::stream<axis64_t> &s_axis,
     hls::stream<axis16_t> &m_axis,
-#ifdef USE_AXIS_PERF
-    hls::stream<perf_word_t> &m_axis_perf
-#else
     ap_uint<32> &cycles_core_out,
     ap_uint<32> &cycles_e2e_out
-#endif
 )
 {
 #pragma HLS INTERFACE axis         port=s_axis
 #pragma HLS INTERFACE axis         port=m_axis
 #pragma HLS INTERFACE ap_ctrl_none port=return
-#ifdef USE_AXIS_PERF
-#pragma HLS INTERFACE axis         port=m_axis_perf
-#else
 #pragma HLS INTERFACE ap_none      port=cycles_core_out
 #pragma HLS INTERFACE ap_none      port=cycles_e2e_out
-#endif
 
 #pragma HLS DATAFLOW
 
-    // Small decoupling FIFOs (no full-frame buffering required)
+    // Small decoupling FIFOs (no full-frame buffering)
     hls::stream<input_t>     img_fifo("img_fifo");
     hls::stream<result_t>    res_fifo("res_fifo");
 #pragma HLS STREAM variable=img_fifo depth=64
@@ -139,29 +168,16 @@ void {{ project_name }}_stream(
     hls::stream<ap_uint<1>>  start_evt_s("start_evt_s");
     hls::stream<ap_uint<1>>  done_core_evt_s("done_core_evt_s");
     hls::stream<ap_uint<1>>  done_e2e_evt_s("done_e2e_evt_s");
-#pragma HLS STREAM variable=start_evt_s     depth=2
-#pragma HLS STREAM variable=done_core_evt_s depth=2
-#pragma HLS STREAM variable=done_e2e_evt_s  depth=2
+#pragma HLS STREAM variable=start_evt_s     depth=4
+#pragma HLS STREAM variable=done_core_evt_s depth=4
+#pragma HLS STREAM variable=done_e2e_evt_s  depth=4
 
-    // 1) Ingest 64b → 2) Run core → 3) Egress 16b
+    // 1) Ingest 64b → 2) Run core (+ forward mark) → 3) Egress 16b
     ingest_pixels(s_axis, img_fifo, start_evt_s);
     run_core(img_fifo, res_fifo, done_core_evt_s);
     egress_logits(res_fifo, m_axis, done_e2e_evt_s);
 
-#ifndef USE_AXIS_PERF
-    // 4A) Scalar outputs (GPIO-friendly)
+    // 4) Scalar outputs (GPIO-friendly)
     cycle_counter_proc(start_evt_s, done_core_evt_s, done_e2e_evt_s,
                        cycles_core_out, cycles_e2e_out);
-#else
-    // 4B) AXIS perf side-channel (2 beats: core, e2e)
-    ap_uint<32> cyc_core, cyc_e2e;
-    cycle_counter_proc(start_evt_s, done_core_evt_s, done_e2e_evt_s,
-                       cyc_core, cyc_e2e);
-
-    perf_word_t pw;
-    pw.data = cyc_core; pw.keep = ~ap_uint<4>(0); pw.strb = ~ap_uint<4>(0); pw.last = 0;
-    m_axis_perf.write(pw);
-    pw.data = cyc_e2e;  pw.last = 1;
-    m_axis_perf.write(pw);
-#endif
 }
