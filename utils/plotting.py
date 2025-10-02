@@ -87,3 +87,81 @@ def print_dict(d, indent=0):
             print_dict(value, indent + 1)
         else:
             print(':' + ' ' * (20 - len(key) - 2 * indent) + str(value))
+            
+            
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score
+
+def _infer_n_classes(Y):
+    # Works for one-hot (N,C) or label vector (N,)
+    if Y.ndim == 2:
+        return Y.shape[1]
+    return int(np.max(Y)) + 1
+
+def _to_label_vector(Y):
+    # Converts one-hot to labels; passes labels through unchanged
+    return np.argmax(Y, axis=1) if Y.ndim == 2 else Y
+
+def plotROC(Y, y_pred, y_pred_hls4ml, label="Model", zoom=None):
+    """
+    Y:            (N,C) one-hot OR (N,) integer labels
+    y_pred:       (N,C) probabilities/logits for Keras model
+    y_pred_hls4ml:(N,C) probabilities/logits for hls4ml model
+    label:        text annotation on the figure
+    zoom:         None or (xmin, xmax, ymin, ymax) to set axis limits
+    """
+    # ----- infer class count & labels -----
+    n_classes = _infer_n_classes(np.asarray(Y))
+    labels = [str(i) for i in range(n_classes)]
+
+    # ----- accuracy (uses argmax; fine for both logits and probs) -----
+    y_true  = _to_label_vector(np.asarray(Y))
+    yhat_1  = np.argmax(np.asarray(y_pred), axis=1)
+    yhat_2  = np.argmax(np.asarray(y_pred_hls4ml), axis=1)
+    accuracy_keras  = float(accuracy_score(y_true, yhat_1))
+    accuracy_hls4ml = float(accuracy_score(y_true, yhat_2))
+    print("Accuracy Keras:  {}".format(accuracy_keras))
+    print("Accuracy hls4ml: {}".format(accuracy_hls4ml))
+
+    # ----- plot -----
+    fig, ax = plt.subplots(figsize=(9, 9))
+    # Keras ROC
+    makeRoc(Y, y_pred, labels=labels)
+    # Reset color cycle so the per-class colors match between models
+    ax.set_prop_cycle(None)
+    # hls4ml ROC (dashed)
+    makeRoc(Y, y_pred_hls4ml, labels=labels, linestyle='--')
+
+    # Legend that distinguishes model (line style), not classes
+    from matplotlib.lines import Line2D
+    from matplotlib.legend import Legend
+    lines = [Line2D([0], [0], ls='-'), Line2D([0], [0], ls='--')]
+    leg = Legend(ax, lines, labels=['Keras', 'hls4ml'], loc='lower right', frameon=False)
+    ax.add_artist(leg)
+
+    # Optional zoom; otherwise full ROC square
+    if zoom is not None:
+        xmin, xmax, ymin, ymax = zoom
+        plt.xlim(xmin, xmax)
+        plt.ylim(ymin, ymax)
+    else:
+        plt.xlim(0.0, 1.0)
+        plt.ylim(0.0, 1.0)
+
+    # Diagonal chance line (nice reference)
+    ax.plot([0, 1], [0, 1], ls=":", lw=1)
+
+    # Title/labels and annotation
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    ax.set_title("ROC per class")
+    plt.figtext(0.18, 0.18, label, wrap=True, ha='left', va='center')
+    plt.tight_layout()
+    return fig, ax
+
+# Examples (unchanged; add zoom if you still want a tight view):
+# fig1, ax1 = plotROC(y_test, y_predict,   y_predict_hls4ml,   label="Keras")
+# fig2, ax2 = plotROC(y_test, y_predict_q, y_predict_hls4ml_q, label="QKeras")
+# If you want the tight corner:
+# fig1, ax1 = plotROC(y_test, y_predict, y_predict_hls4ml, label="Keras", zoom=(0.75,1.0,0.75,1.0))

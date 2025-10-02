@@ -15,17 +15,15 @@ class TemplateInjector:
             "compute_performance.py",
             "build_prj.tcl",
             "golden_preds.py",
-            "vivado_synth.tcl",
         ]
 
-    def inject(self, project_dir, project_name, force=False, confirm_fn=None, packed=False):
+    def inject(self, project_dir, project_name, force=False, confirm_fn=None):
         project_dir = Path(project_dir)
         firmware_dir = project_dir / "firmware"
         firmware_dir.mkdir(parents=True, exist_ok=True)
 
-        # choose the right templates folder
-        tmpl_base = self.template_dir / "packing" if packed else self.template_dir
-        env = Environment(loader=FileSystemLoader(str(tmpl_base)))
+        # always use base templates folder (no packed version anymore)
+        env = Environment(loader=FileSystemLoader(str(self.template_dir)))
 
         # Render and write Jinja2 templates
         for tmpl_name in self.templated_files:
@@ -40,16 +38,16 @@ class TemplateInjector:
 
             if not output_path.exists() or force or (confirm_fn and confirm_fn(output_path)):
                 output_path.write_text(rendered)
-                print(f"✅ Injected: {output_path}")
+                print(f"Injected: {output_path}")
             else:
-                print(f"⏭️  Skipped (exists): {output_path}")
+                print(f"⏭Skipped (exists): {output_path}")
 
-        # Copy static files (always from the root templates folder)
+        # Copy static files
         for static in self.static_files:
             src = self.template_dir / static
             dest = project_dir / static
             if not dest.exists() or force:
                 shutil.copy(src, dest)
-                print(f"📁 Copied: {static} → {dest}")
+                print(f"Copied: {static} → {dest}")
             else:
-                print(f"⏭️  Skipped (exists): {static}")
+                print(f"Skipped (exists): {static}")
